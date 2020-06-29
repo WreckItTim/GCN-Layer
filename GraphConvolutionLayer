@@ -1,0 +1,26 @@
+import tensorflow as tf
+class GraphConvolutionLayer(tf.keras.layers.Layer):
+  def __init__(self, input_shape, adjacency_matrices, units=16, activation_function=tf.nn.relu, regularizer=None, constraint=None):
+    super(GraphConvolutionLayer, self).__init__()
+    self.adjacency_matrices = adjacency_matrices
+    self.activation_function = activation_function
+    self.max_hop = len(adjacency_matrices)
+    self.units = units
+    self.w = dict()
+    for k in range(max(1,self.max_hop)):
+      self.w[k] = self.add_weight( 
+                             shape=(input_shape[-1], units)
+                             , initializer='glorot_normal'
+                             , trainable=True
+                             , regularizer=regularizer
+                             , constraint=constraint 
+                             , dtype='float32'
+                            )
+    self.b = self.add_weight( 
+                             shape=(self.units,)
+                             , initializer='zeros'
+                             , trainable=True
+                             , dtype='float32'
+                            )
+  def call(self, inputs):
+    return self.activation_function(self.b + tf.add_n([tf.matmul(tf.matmul(self.adjacency_matrices[k], inputs), self.w[k]) for k in range(max(1, self.max_hop))])) 
