@@ -1,0 +1,78 @@
+def getKNeighbors(max_order, adj):
+  if max_order == 0:
+    return [np.eye(adj.shape[0], dtype='float32')]
+  adjs = [adj]
+  for k in range(1, max_order):
+    A = np.matmul(adjs[-1], adjs[0])
+    B = np.where(A > 0, 1, 0)
+    for m in adjs:
+      B = B - m
+    C = np.where(B > 0, 1, 0)
+    adjs.append(C)
+  return adjs
+  
+def encode_onehot(labels):
+  classes = set(labels)
+  classes_dict = {c: np.identity(len(classes))[i, :] for i, c in enumerate(classes)}
+  labels_onehot = np.array(list(map(classes_dict.get, labels)), dtype=np.int32)
+  return labels_onehot
+
+import random
+def split_dataset(labels, train_size=20, val_size=20, test_size=0):
+  label_pairs = np.where(labels == 1)
+  label2nodes = {}
+  for i in range(len(label_pairs[0])):
+    node, label = label_pairs[0][i], label_pairs[1][i]
+    if label not in label2nodes.keys():
+        label2nodes[label] = []
+    label2nodes[label].append(node)
+  idx_train = []
+  idx_val = []
+  idx_test = []
+  for key in label2nodes.keys():
+    random.shuffle(label2nodes[key])
+    idx_train += label2nodes[key][:train_size]
+    idx_val += label2nodes[key][train_size:train_size+val_size]
+    idx_test += label2nodes[key][train_size+val_size: (train_size+val_size+test_size if test_size > 0 else len(label2nodes[key])) ]
+  train_mask = np.zeros(len(labels), dtype=int)
+  train_mask[idx_train] = 1
+  return idx_train, idx_val, idx_test, train_mask
+
+def normalize_adjs(adjs):
+  new_adjs = []
+  for adj in adjs:
+    adj = sp.coo_matrix(adj, dtype='float32')
+    rowsum = np.array(adj.sum(1))
+    d_inv_sqrt = np.power(rowsum, -0.5).flatten()
+    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+    d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+    new_adjs.append(adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).todense())
+  return new_adjs
+  
+def preprocess_adjs(adjs):
+  return [adj + sp.eye(adj.shape[0]) for adj in adjs]
+  
+def normalize_features(features):
+  rowsum = np.array(features.sum(1), dtype='float32')
+  r_inv = np.power(rowsum, -1).flatten()
+  r_inv[np.isinf(r_inv)] = 0.
+  r_mat_inv = sp.diags(r_inv)
+  return r_mat_inv.dot(features).todense().astype('float32')
+  
+def classify(preds):
+  classes = np.zeros(preds.shape, dtype='int32')
+  for r in range(preds.shape[0]):
+    idx = np.argmax(preds[r])
+    classes[r, idx] = 1
+  return classes
+  
+def categorical_crossentropy(preds, labels):
+  return np.mean(-np.log(np.extract(labels, preds)))
+  
+def accuracy(preds, labels):
+  return np.mean(np.equal(np.argmax(labels, 1), np.argmax(preds, 1)))
+  
+def evaluate_preds(preds, labels, indices):
+  split_loss = categorical_crossentropy(preds[indices], labels[indices])
+  split_acc = accuracy(preds[indices], labels[indices])
+  return split_loss, split_acc
